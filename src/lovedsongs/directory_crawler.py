@@ -5,7 +5,10 @@ from ConfigParser import ConfigParser
 import id3reader
 import cPickle
 from pybing import Bing
-
+from pprint import pformat
+from BeautifulSoup import BeautifulSoup
+import urllib
+from mechanize_crawler import Browser
 
 
 def get_genre(genre):
@@ -43,12 +46,22 @@ def smart_decode(value):
     return 'failed to decode'
 
 
+lyrics_matches = {
+    # Site: (what to look for, what to skip)
+    'lyricsmode.com': ({'id': 'songlyrics_h'},
+                       'lyricsmode.com'),
+    'lyricsfreak.com': ({'id': 'content', 'class': 'lyricstxt'},
+                        'lyricsfreak.com'),
+}
+
+
 class VideoEntry:
     def __init__(self, mp3_fname):
         self.mp3_fname = mp3_fname
         self.init_config()
 
     def process(self):
+        print 'Processing %s' % self.mp3_fname
         self.get_tags()
         self.get_text()
         self.get_pics()
@@ -80,9 +93,12 @@ class VideoEntry:
 
     def save(self):
         with open(self.config_fname, 'w') as f:
-            cPickle.dump(f)
+            cPickle.dump(self.config, f)
 
     def get_tags(self):
+        if self.conf_tags_done:
+            print 'Tags are already done'
+            return
         default_tags = {
             'album': '',
             'performer': '',
@@ -93,8 +109,6 @@ class VideoEntry:
             'comment': ''
         }
         tags = self.conf_tags or default_tags
-        if self.conf_tags_done:
-            return
         tags = self.tags_from_mp3(tags)
         tags = self.tags_from_dir(tags)
         self.conf_tags = tags
@@ -122,13 +136,66 @@ class VideoEntry:
             tags['performer'] = smart_decode(os.path.basename(os.path.dirname(os.path.dirname(self.mp3_fname))))
         return tags
 
-    def get_text(self):
-        bing = Bing('A98B5504E6CAEC6C4ECDED9D83AA57C947206C8F')
-        bing.
+    def extract_text_parts(self, collection, exclude):
+        for part in collection:
+            print '...%s' % part
+            if hasattr(part, 'contents'):
+                for sub_part in self.extract_text_parts(part.contents, exclude):
+                    yield sub_part
+            else:
+                if not exclude or not (exclude in part):
+                    yield part.strip(' \n\r')
 
+    def get_text(self):
+        if self.conf_lyrics_done:
+            print 'Lyrics are already done'
+            return
+        bing = Bing('A98B5504E6CAEC6C4ECDED9D83AA57C947206C8F')
+        tags = self.conf_tags
+        lyrics_search = bing.search_web('"%s" lyrics %s %s'
+                                        % (tags['title'],
+                                           tags['album'],
+                                           tags['performer']))
+        #print 'Lyrics search result: %s' % pformat(lyrics_search)
+        for result in lyrics_search.get(
+                            'SearchResponse', {}).get(
+                                'Web', {}).get(
+                                    'Results', []):
+            url = result['Url']
+
+            for match, (good_attr, bad_part) in lyrics_matches.items():
+                if match in url:
+                    # Good! We have a known site with lyrics - let's extract them.
+
+                    browser = Browser()
+                    browser.set_handle_robots(None)
+                    browser.open(url)
+                    text = browser.response().read()
+                    soup = BeautifulSoup(text)
+                    lyrics_el = soup.find(attrs=good_attr)
+                    if not lyrics_el:
+                        print 'Not found lyrics in %s' % text
+                        continue
+                    print 'full text: %s' % text
+                    print 'Found something like this: %s' % lyrics_el
+                    parts = list(self.extract_text_parts(lyrics_el.contents, bad_part))
+                    lyrics = '\n'.join(parts)
+                    print 'Found lyrics: \n%s' % lyrics
+                    self.conf_lyrics = lyrics
+                    self.conf_lyrics_done = True
+                    return
 
     def get_pics(self):
-        pass
+        if self.conf_pics_done:
+            print 'Pics are already done'
+            return
+        bing = Bing('A98B5504E6CAEC6C4ECDED9D83AA57C947206C8F')
+        tags = self.conf_tags
+        img_search = bing.search_image('"%s" %s %s'
+                                        % (tags['title'],
+                                           tags['album'],
+                                           tags['performer']))
+        #print 'Images: %s' % pformat(img_search)
 
 
 
@@ -142,4 +209,5 @@ def crawl(dirname):
 
 
 if __name__ == '__main__':
-    crawl('data')
+    root = len(sys.argv) > 1 and sys.argv[1] or 'data'
+    crawl(root)
