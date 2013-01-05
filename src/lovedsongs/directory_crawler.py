@@ -1,16 +1,26 @@
 import os
 import sys
+import glob
 import id3reader
 import cPickle
-from pybing import Bing
-#from pprint import pformat
+from pprint import pformat
 from BeautifulSoup import BeautifulSoup
 from mechanize_crawler import Browser
 import Image
 from traceback import print_exc
 import subprocess
 import re
-from .slideshow import pan_zoom
+import slideshow
+import logging
+from bing_search_api import BingSearchAPI
+import random
+
+
+log = logging.getLogger(__file__)
+
+
+DEFAULT_VIDEO_RESOLUTION = [640, 360]
+REQUIRED_IMAGE_COUNT = 10
 
 
 def get_genre(genre):
@@ -117,9 +127,23 @@ class VideoEntry:
         tags = self.conf_tags or default_tags
         tags = self.tags_from_mp3(tags)
         tags = self.tags_from_dir(tags)
+        tags = self.convert_tags(tags)
         self.conf_tags = tags
         self.conf_tags_done = True
         return self.conf_tags_done
+
+    def convert_tags(self, tags):
+        ru_marker = u'\xc1\xf3\xeb\xee\xed\xe5\xeb\xfe\xe1\xe8\xf2\xe8'
+        for k, v in tags.items():
+            for mark in ru_marker:
+                if mark in v:
+                    try:
+                        tags[k] = v.encode('windows-1252').decode('windows-1251')
+                        log.debug('Converted %r -> %s' % (v, tags[k]))
+                        break
+                    except:
+                        pass
+        return tags
 
     def get_utf_tag(self, reader, tag):
         retval = reader.getValue(tag) or ''
@@ -157,15 +181,13 @@ class VideoEntry:
         if self.conf_lyrics_done:
             print 'Lyrics are already done'
             return self.conf_lyrics_done
-        bing = Bing('A98B5504E6CAEC6C4ECDED9D83AA57C947206C8F')
+        bing = BingSearchAPI()
         tags = self.conf_tags
         search = '%s lyrics %s' % (tags['title'], tags['performer'])
         print 'Searching for lyrics. Search string: %s' % search
-        lyrics_search = bing.search_web(search)
+        lyrics_search = bing.search('web', search.encode('utf-8'), {'$format': 'json'})
         #print 'Lyrics search result: %s' % pformat(lyrics_search)
-        for result in lyrics_search.get(
-                            'SearchResponse', {}).get(
-                                'Web', {}).get('Results', []):
+        for result in lyrics_search.get('d', {}).get('results', [{}])[0].get('Web', []):
             url = result['Url']
             print 'lyrics in %s?' % url
             for match, (good_attr, bad_part) in lyrics_matches.items():
@@ -204,54 +226,64 @@ class VideoEntry:
         if self.conf_pics_done:
             print 'Pics are already done'
             return self.conf_pics_done
-        bing = Bing('A98B5504E6CAEC6C4ECDED9D83AA57C947206C8F')
+        imgdir = self.imgdir
+        if len(glob.glob1(imgdir, "*.png")) > REQUIRED_IMAGE_COUNT:
+            self.conf_pics_done = True
+            return self.conf_pics_done
+        bing = BingSearchAPI()
         tags = self.conf_tags
         search = '%s %s' % (tags['title'], tags['performer'])
         print 'Searching for images. Search string: %s' % search
-        img_search = bing.search_image(search)
-        #print 'Images: %s' % pformat(img_search)
-        imgdir = self.imgdir
+        img_search = bing.search('image', search.encode('utf-8'), {'$format': 'json'})
+        print 'Images: %s' % pformat(img_search)
+        registry = processed_image_urls.setdefault(imgdir, set())
         if not os.path.exists(imgdir):
             os.makedirs(imgdir)
-        for result in img_search.get(
-                            'SearchResponse', {}).get(
-                                'Image', {}).get('Results', []):
-            browser = Browser()
-            browser.set_handle_robots(None)
-            registry = processed_image_urls.setdefault(imgdir, set())
+        for result in img_search.get('d', {}).get('results', [{}])[0].get('Image', []):
             if result['MediaUrl'] not in registry:
-                registry.add(result['MediaUrl'])
-                count = len(registry)
-                try:
-                    browser.open(result['Url'])
-                    img = Image.open(browser.open(result['MediaUrl']))
-                    if img.size[0] >= 640 and img.size[1] >= 480:
-                        print 'Found image: %s' % result['MediaUrl']
-                        img.save(os.path.join(imgdir, ('image%03d.png' % count)))
-                        self.conf_pics_done = True
-                except:
-                    print_exc()
-        if count < 10:
-            search = tags['performer']
-            print 'Searching for images. Search string: %s' % search
-            img_search = bing.search_image(search)
-            for result in img_search.get(
-                                'SearchResponse', {}).get(
-                                    'Image', {}).get('Results', []):
                 browser = Browser()
                 browser.set_handle_robots(None)
+                registry.add(result['MediaUrl'])
+                log.debug('%s images in %s' % (len(glob.glob1(imgdir, "*.png")), imgdir))
                 try:
-                    browser.open(result['Url'])
+                    #log.debug('Opening %s' % result['SourceUrl'])
+                    browser.open(result['SourceUrl'])
+                    #log.debug('Opening %s' % result['MediaUrl'])
                     img = Image.open(browser.open(result['MediaUrl']))
-                    if img.size[0] >= 640 and img.size[1] >= 480:
+                    if img.size[0] >= DEFAULT_VIDEO_RESOLUTION and img.size[1] >= DEFAULT_VIDEO_RESOLUTION[1]:
                         print 'Found image: %s' % result['MediaUrl']
-                        img.save(os.path.join(imgdir, ('image%03d.png' % count)))
-                        count += 1
-                        if count > 10:
+                        img.save(os.path.join(imgdir, ('image%03d.png'
+                            % (len(glob.glob1(imgdir, "*.png"))) + 1)))
+                        self.conf_pics_done = True
+                        if len(glob.glob1(imgdir, "*.png")) > REQUIRED_IMAGE_COUNT:
                             self.conf_pics_done = True
                             break
                 except:
                     print_exc()
+        if len(glob.glob1(imgdir, "*.png")) < REQUIRED_IMAGE_COUNT:
+            search = tags['performer']
+            print 'Searching for images. Search string: %s' % search
+            img_search = bing.search('image', search.encode('utf-8'), {'$format': 'json'})
+            for result in img_search.get('d', {}).get('results', [{}])[0].get('Image', []):
+                if result['MediaUrl'] not in registry:
+                    browser = Browser()
+                    browser.set_handle_robots(None)
+                    registry.add(result['MediaUrl'])
+                    log.debug('%s images in %s' % (len(glob.glob1(imgdir, "*.png")), imgdir))
+                    try:
+                        #log.debug('Opening %s' % result['SourceUrl'])
+                        browser.open(result['SourceUrl'])
+                        #log.debug('Opening %s' % result['MediaUrl'])
+                        img = Image.open(browser.open(result['MediaUrl']))
+                        if img.size[0] >= DEFAULT_VIDEO_RESOLUTION[0] and img.size[1] >= DEFAULT_VIDEO_RESOLUTION[1]:
+                            print 'Found image: %s' % result['MediaUrl']
+                            img.save(os.path.join(imgdir, ('image%03d.png'
+                                % (len(glob.glob1(imgdir, "*.png"))) + 1)))
+                            if len(glob.glob1(imgdir, "*.png")) > REQUIRED_IMAGE_COUNT:
+                                self.conf_pics_done = True
+                                break
+                    except:
+                        print_exc()
         return self.conf_pics_done
 
     def make_video(self):
@@ -267,16 +299,24 @@ class VideoEntry:
         return self.conf_video_done
 
     def detect_duration(self):
-        cmd = r'ffmpeg -i "%s" 2>&1|sed -n "s/.*Duration: \([^,]*\).*/\1/p"' % self.mp3_fname
-        output = subprocess.Popen([cmd], stdout=subprocess.PIPE).communicate()[0]
-        regex = r'([\d][\d]):([\d][\d]):([\d][\d]\.[\d]+)'
-        match = re.match(regex, output)
-        if match:
-            self.mp3_seconds = (int(match.group(1)) * 60 * 60
-                       + int(match.group(2)) * 60
-                       + float(match.group(3)))
-        else:
-            raise RuntimeError('Failed to detect MP3 length')
+        ffmpeg = subprocess.Popen(['ffmpeg', '-i', self.mp3_fname],
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE)
+        print ffmpeg.communicate()
+#        sed = subprocess.Popen(['sed', '-n', '"s/.*Duration: \([^,]*\).*/\1/p"'],
+#                               stdin=ffmpeg.stderr,
+#                               stdout=subprocess.PIPE,
+#                               stderr=subprocess.PIPE)
+#        output = sed.communicate()[0]
+#        print 'Output: %s' % output
+#        regex = r'([\d][\d]):([\d][\d]):([\d][\d]\.[\d]+)'
+#        match = re.match(regex, output)
+#        if match:
+#            self.mp3_seconds = (int(match.group(1)) * 60 * 60
+#                       + int(match.group(2)) * 60
+#                       + float(match.group(3)))
+#        else:
+#            raise RuntimeError('Failed to detect MP3 length')
 
     def generate_images(self):
         imgdir = self.imgdir
@@ -285,7 +325,11 @@ class VideoEntry:
             img_dir = image_file + '_frames'
             if not os.path.exists(img_dir):
                 os.makedirs(img_dir)
-            pan_zoom()
+            slideshow.pan_zoom(Image(image_file),
+                               DEFAULT_VIDEO_RESOLUTION,
+                               img_dir,
+                               random.choice(((1,1), (1,-1), (-1,1), (-1,-1))),
+                               ramdom.choice((True, False)))
 
     def generate_video_fragments(self):
         pass
@@ -307,5 +351,6 @@ def crawl(dirname):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
     root = len(sys.argv) > 1 and sys.argv[1] or 'data'
     crawl(root)

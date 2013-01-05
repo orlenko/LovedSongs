@@ -17,7 +17,7 @@ class Browser(mechanize.Browser):
     def open(self,
             url,
             data=None,
-            timeout=_sockettimeout._GLOBAL_DEFAULT_TIMEOUT,
+            timeout=20, # Screw slow connections
             headers=None):
         return self._mech_open(url, data, timeout=timeout, headers=headers)
 
