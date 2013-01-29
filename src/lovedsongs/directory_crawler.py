@@ -299,7 +299,7 @@ class VideoEntry:
         return self.conf_video_done
 
     def detect_duration(self):
-        ffmpeg = subprocess.Popen(['ffmpeg', '-i', self.mp3_fname],
+        ffmpeg = subprocess.Popen(['avconv', '-i', self.mp3_fname],
                                   stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE)
         print ffmpeg.communicate()

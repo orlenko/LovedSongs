@@ -1,0 +1,17 @@
+Current plan of action
+----------------------
+
+Figure out the best way to jump-start Django projects. Is it http://paltman.com/2012/08/27/getting-started-with-pinax-starter-projects/ ?
+
+So, we're using virtualenvwrapper and pinax.
+
+Review http://www.ramavadakattu.com/top-10-tips-to-a-new-django-developer
+
+Review http://pinaxproject.com/
+
+Make a project template that incorporates south, bootstrap, angularjs (?) and oAuth.
+
+
+Figure out authentication with YouTube
+
+
