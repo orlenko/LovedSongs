@@ -3,6 +3,7 @@ Current plan of action
 
 Figure out the best way to jump-start Django projects. Is it http://paltman.com/2012/08/27/getting-started-with-pinax-starter-projects/ ?
 Or maybe https://github.com/mschettler/django-skeleton ?
+Or  ?
 
 So, we're using virtualenvwrapper and pinax.
 
@@ -15,4 +16,6 @@ Make a project template that incorporates south, bootstrap, angularjs (?) and oA
 
 Figure out authentication with YouTube
 
+
+For REST API: http://django-rest-framework.org/topics/rest-framework-2-announcement.html
 
