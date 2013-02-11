@@ -1,0 +1,54 @@
+
+1.Don’t put project name  in the imports
+2.Don’t hard code MEDIA_ROOT and TEMPLATE_DIRS
+3.Don’t hard code static files in your templates.
+4.Don’t write core business logic in your views !
+5.It is tedious to change DEBUG=False (settings.py) when moving to production server
+import socket
+if socket.gethostname() == 'productionserver.com':
+ DEBUG = False
+else:
+ DEBUG = True
+
+6.Load template tags  belonging to third party apps  only once
+ from django import template
+ template.add_to_builtins('project.app.templatetags.custom_tag_module')
+
+7.Urls.py
+ urlpatterns = patterns('',
+ # Example:
+ (r'^$', include('institution.urls')),
+ (r'^institution/', include('institution.urls')),
+ (r'^askalumini/', include('askalumini.urls')),
+ (r'^member/', include('member.urls')),
+ )
+Don’t hardcode urls
+
+8.Debugging
+
+a.Use  django-debug-toolbar to find various information like
+b.Use Werkzeug debugger which allows you to open python shell right on the error page.and which helps you to quickly debug the things.
+http://blog.dpeepul.com/2009/07/14/python-shell-right-on-the-django-error-page/
+c.Use pdb a powerful utility to debug things.
+http://ericholscher.com/blog/2008/aug/31/using-pdb-python-debugger-django-debugging-series-/
+
+9.Know about pinax if possible use it.
+http://uswaretech.com/blog/2009/03/create-a-new-social-networking-site-in-few-hours-using-pinax-platform-django/
+
+10.Important third party apps to know
+South (is more robust but a bit of learning is needed)
+template-utils (enhances the template functionality with comparison template tags, other template utilities)
+Jinja (third party template system , which use same syntax as django template, which you can plugin to your Django project and it offers more flexibility and features in writing the template logic)
+Django command extension:
+ shell_plus : loads all the django models
+ runserver_plus integrates with  Werkzeug  debugger
+ generating models graph to show it to your boss
+  http://ericholscher.com/blog/2008/sep/12/screencast-django-command-extensions/
+
+Sorl for generating thumbnails.
+
+
+Other resources:
+
+1.http://stackoverflow.com/questions/550632/favorite-django-tips-features
+
