@@ -6,7 +6,7 @@ Or maybe https://github.com/mschettler/django-skeleton ?
 
 So, we're using virtualenvwrapper and pinax.
 
-Review http://www.ramavadakattu.com/top-10-tips-to-a-new-django-developer
+[done - URL is dead, but cached Google copy rules] Review http://www.ramavadakattu.com/top-10-tips-to-a-new-django-developer
 
 Review http://pinaxproject.com/
 
